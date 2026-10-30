@@ -1,0 +1,1431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spice & Sizzle - Restaurant Kitchen Display System (KDS) & Order Pipeline</title>
+    <!-- Bootstrap 5 CSS CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome 6 Icons CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --brand-primary: #e63946;
+            --brand-dark: #1d3557;
+            --brand-light: #f8f9fa;
+            --brand-accent: #457b9d;
+            --brand-teal: #2a9d8f;
+            --brand-gold: #e76f51;
+            --status-placed: #0d6efd;
+            --status-prep: #ffc107;
+            --status-ready: #198754;
+            --status-served: #6c757d;
+            --status-cancel: #dc3545;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+            background-color: #f4f6f9;
+            color: #2b2d42;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Top Navbar */
+        .navbar-brand-custom {
+            font-weight: 800;
+            font-size: 1.35rem;
+            letter-spacing: -0.5px;
+            color: #fff !important;
+        }
+
+        .nav-pills .nav-link {
+            font-weight: 600;
+            font-size: 0.92rem;
+            color: rgba(255, 255, 255, 0.85);
+            border-radius: 8px;
+            padding: 8px 16px;
+            transition: all 0.2s ease-in-out;
+        }
+        .nav-pills .nav-link:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.15);
+        }
+        .nav-pills .nav-link.active {
+            background-color: var(--brand-primary) !important;
+            color: #fff !important;
+            box-shadow: 0 4px 10px rgba(230, 57, 70, 0.35);
+        }
+
+        /* Ticket Cards (KDS) */
+        .kds-ticket {
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.06);
+            transition: transform 0.2s, box-shadow 0.2s;
+            overflow: hidden;
+            background: #ffffff;
+        }
+        .kds-ticket:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        }
+        .kds-header {
+            padding: 12px 16px;
+            font-weight: 700;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .kds-header.placed { background: linear-gradient(135deg, #0d6efd, #0b5ed7); color: #fff; }
+        .kds-header.preparing { background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; }
+        .kds-header.ready { background: linear-gradient(135deg, #10b981, #059669); color: #fff; }
+        .kds-header.served { background: linear-gradient(135deg, #64748b, #475569); color: #fff; }
+
+        .kds-timer {
+            font-family: monospace;
+            font-weight: bold;
+            font-size: 1.1rem;
+            padding: 2px 8px;
+            border-radius: 6px;
+            background: rgba(0,0,0,0.2);
+        }
+        .kds-timer.overdue {
+            background: #dc3545;
+            color: #fff;
+            animation: pulse-overdue 1.5s infinite;
+        }
+
+        @keyframes pulse-overdue {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+
+        /* Multithreading Carousel Rack */
+        .carousel-rack {
+            background: #1e293b;
+            border-radius: 14px;
+            padding: 20px;
+            border: 2px dashed #475569;
+        }
+        .carousel-slot {
+            height: 110px;
+            border-radius: 10px;
+            border: 2px dashed #64748b;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #94a3b8;
+            font-weight: 600;
+            position: relative;
+            background: rgba(255,255,255,0.03);
+            transition: all 0.3s;
+        }
+        .carousel-slot.occupied {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            border: 2px solid #60a5fa;
+            color: white;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        .thread-worker-box {
+            border-radius: 12px;
+            padding: 16px;
+            color: white;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.1);
+        }
+        .waiter-worker { background: linear-gradient(135deg, #0284c7, #0369a1); }
+        .chef-worker { background: linear-gradient(135deg, #d97706, #b45309); }
+
+        /* General Badges & Pills */
+        .badge-station {
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 6px;
+            background: #e2e8f0;
+            color: #334155;
+        }
+
+        /* POS Item Cards */
+        .pos-item-card {
+            cursor: pointer;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            transition: all 0.2s;
+            background: #fff;
+        }
+        .pos-item-card:hover {
+            border-color: var(--brand-primary);
+            transform: scale(1.02);
+            box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+        }
+
+        /* Console log container */
+        .sim-console {
+            background: #0f172a;
+            color: #38bdf8;
+            font-family: "Courier New", Courier, monospace;
+            font-size: 0.85rem;
+            padding: 14px;
+            border-radius: 10px;
+            height: 220px;
+            overflow-y: auto;
+        }
+
+        /* Printable Receipt */
+        @media print {
+            body * { visibility: hidden; }
+            #printableReceipt, #printableReceipt * { visibility: visible; }
+            #printableReceipt { position: absolute; left: 0; top: 0; width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Main Navigation Bar -->
+    <nav class="navbar navbar-expand-xl navbar-dark bg-dark px-3 py-2 sticky-top shadow-sm">
+        <div class="container-fluid">
+            <a class="navbar-brand navbar-brand-custom d-flex align-items-center" href="#">
+                <span class="badge bg-danger me-2 p-2"><i class="fas fa-fire-burner"></i></span>
+                <span>SPICE & SIZZLE <small class="text-warning fw-normal" style="font-size: 0.78rem;">| KDS & Order Pipeline</small></span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavContent">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="mainNavContent">
+                <ul class="nav nav-pills mx-auto my-2 my-xl-0" id="mainTabList" role="tablist">
+                    <li class="nav-item">
+                        <button class="nav-link active" id="tab-kds-btn" data-bs-toggle="pill" data-bs-target="#tab-kds" type="button">
+                            <i class="fas fa-desktop me-1"></i> Kitchen KDS <span id="kdsBadge" class="badge bg-danger ms-1">0</span>
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" id="tab-pos-btn" data-bs-toggle="pill" data-bs-target="#tab-pos" type="button">
+                            <i class="fas fa-cash-register me-1"></i> New Order (POS)
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" id="tab-pipeline-btn" data-bs-toggle="pill" data-bs-target="#tab-pipeline" type="button">
+                            <i class="fas fa-stream me-1"></i> Pipeline Orders
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" id="tab-sim-btn" data-bs-toggle="pill" data-bs-target="#tab-sim" type="button">
+                            <i class="fas fa-microchip me-1 text-warning"></i> Multithreading Engine
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" id="tab-menu-btn" data-bs-toggle="pill" data-bs-target="#tab-menu" type="button">
+                            <i class="fas fa-utensils me-1"></i> Menu & Stock
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" id="tab-billing-btn" data-bs-toggle="pill" data-bs-target="#tab-billing" type="button">
+                            <i class="fas fa-receipt me-1"></i> Billing Desk
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" id="tab-dashboard-btn" data-bs-toggle="pill" data-bs-target="#tab-dashboard" type="button">
+                            <i class="fas fa-chart-line me-1"></i> Reports & KPIs
+                        </button>
+                    </li>
+                </ul>
+                <div class="d-flex align-items-center gap-2">
+                    <button class="btn btn-sm btn-outline-light" id="soundToggleBtn" onclick="toggleAudio()" title="Sound Chimes Toggle">
+                        <i class="fas fa-volume-up" id="soundIcon"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="clearAllOrdersConfirm()" title="Reset demonstration orders">
+                        <i class="fas fa-trash-alt me-1"></i> Clear Orders
+                    </button>
+                    <span class="badge bg-success py-2 px-3"><i class="fas fa-circle text-light me-1" style="font-size:0.6rem;"></i> System Live</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content Container -->
+    <div class="container-fluid flex-grow-1 px-3 px-lg-4 py-3">
+        <div class="tab-content" id="mainTabContent">
+
+            <!-- TAB 1: KITCHEN DISPLAY SYSTEM (KDS) -->
+            <div class="tab-pane fade show active" id="tab-kds" role="tabpanel">
+                <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+                    <div>
+                        <h4 class="fw-bold mb-0 text-dark"><i class="fas fa-tv text-danger me-2"></i>Active Kitchen Display System (KDS)</h4>
+                        <small class="text-secondary">Live order queue with auto-timers, color-coded bump bar, and station routing</small>
+                    </div>
+                    <div class="d-flex gap-2 mt-2 mt-md-0">
+                        <div class="btn-group" role="group" id="stationFilterGroup">
+                            <button type="button" class="btn btn-sm btn-outline-dark active" onclick="filterKdsStation('ALL')">All Stations</button>
+                            <button type="button" class="btn btn-sm btn-outline-dark" onclick="filterKdsStation('GRILL')">Grill Station</button>
+                            <button type="button" class="btn btn-sm btn-outline-dark" onclick="filterKdsStation('FRYER')">Fryer Station</button>
+                            <button type="button" class="btn btn-sm btn-outline-dark" onclick="filterKdsStation('BEV')">Beverages</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Empty State -->
+                <div id="kdsEmptyState" class="text-center py-5 d-none">
+                    <div class="py-5">
+                        <i class="fas fa-check-double text-success fa-4x mb-3"></i>
+                        <h4 class="fw-bold">All Kitchen Orders Cleared!</h4>
+                        <p class="text-muted">There are no active orders on the kitchen carousel right now.</p>
+                        <button class="btn btn-primary fw-semibold" onclick="document.getElementById('tab-pos-btn').click()">
+                            <i class="fas fa-plus me-1"></i> Place New Order Ticket
+                        </button>
+                    </div>
+                </div>
+
+                <!-- KDS Grid Cards -->
+                <div class="row g-3" id="kdsCardsContainer">
+                    <!-- Tickets injected by JS -->
+                </div>
+            </div>
+
+            <!-- TAB 2: POS / NEW ORDER BUILDER -->
+            <div class="tab-pane fade" id="tab-pos" role="tabpanel">
+                <div class="row g-4">
+                    <!-- Left: Menu Item Catalog Grid -->
+                    <div class="col-lg-8">
+                        <div class="card border-0 shadow-sm p-3 mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h5 class="fw-bold mb-0"><i class="fas fa-hamburger text-primary me-2"></i>POS Menu Catalog</h5>
+                                <div class="d-flex gap-2">
+                                    <input type="text" id="menuSearchInput" class="form-control form-control-sm" placeholder="Search dish..." onkeyup="filterMenuCatalog()">
+                                    <select id="menuCategoryFilter" class="form-select form-select-sm" onchange="filterMenuCatalog()">
+                                        <option value="ALL">All Categories</option>
+                                        <option value="Burgers">Burgers & Sandwiches</option>
+                                        <option value="Mains">Main Courses</option>
+                                        <option value="Sides">Sides & Fries</option>
+                                        <option value="Beverages">Beverages</option>
+                                        <option value="Desserts">Desserts</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="row g-3" id="posMenuGrid">
+                                <!-- POS Menu Cards injected by JS -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Current Order Ticket Cart -->
+                    <div class="col-lg-4">
+                        <div class="card border-0 shadow-sm sticky-top" style="top: 80px;">
+                            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center py-3">
+                                <h6 class="mb-0 fw-bold"><i class="fas fa-clipboard-list me-2"></i>New Order Ticket</h6>
+                                <span class="badge bg-danger" id="cartCountBadge">0 items</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="row g-2 mb-3">
+                                    <div class="col-6">
+                                        <label class="form-label small fw-semibold">Order Type</label>
+                                        <select id="posOrderType" class="form-select form-select-sm">
+                                            <option value="DINE_IN">Dine-In</option>
+                                            <option value="TAKEAWAY">Takeaway</option>
+                                            <option value="DELIVERY">Delivery</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label small fw-semibold">Table / Seat</label>
+                                        <input type="text" id="posTableNumber" class="form-control form-control-sm" value="T-01" placeholder="e.g. T-04">
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label small fw-semibold">Customer Name</label>
+                                        <input type="text" id="posCustomerName" class="form-control form-control-sm" placeholder="Guest Name">
+                                    </div>
+                                </div>
+
+                                <div class="border rounded p-2 mb-3" style="max-height: 250px; overflow-y: auto;" id="posCartList">
+                                    <div class="text-center text-muted py-4 small">Cart is empty. Click items from catalog to add.</div>
+                                </div>
+
+                                <div class="bg-light p-3 rounded mb-3">
+                                    <div class="d-flex justify-content-between small mb-1">
+                                        <span class="text-secondary">Subtotal:</span>
+                                        <span class="fw-semibold" id="posSubtotal">₹0.00</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between small mb-1">
+                                        <span class="text-secondary">GST (5%):</span>
+                                        <span class="fw-semibold" id="posTax">₹0.00</span>
+                                    </div>
+                                    <hr class="my-1">
+                                    <div class="d-flex justify-content-between fw-bold text-dark fs-5">
+                                        <span>Total:</span>
+                                        <span class="text-danger" id="posTotal">₹0.00</span>
+                                    </div>
+                                </div>
+
+                                <button class="btn btn-danger w-100 fw-bold py-2 shadow-sm" onclick="submitPosOrder()">
+                                    <i class="fas fa-paper-plane me-2"></i> Dispatch Ticket to Kitchen
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: PIPELINE ORDERS -->
+            <div class="tab-pane fade" id="tab-pipeline" role="tabpanel">
+                <div class="card border-0 shadow-sm p-3">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold mb-0"><i class="fas fa-stream text-primary me-2"></i>Complete Order Pipeline</h5>
+                        <div class="d-flex gap-2">
+                            <select id="pipelineStatusFilter" class="form-select form-select-sm" onchange="renderPipelineTable()">
+                                <option value="ALL">All Statuses</option>
+                                <option value="PLACED">Placed</option>
+                                <option value="ACCEPTED">Accepted</option>
+                                <option value="PREPARING">Preparing</option>
+                                <option value="READY">Ready</option>
+                                <option value="SERVED">Served</option>
+                                <option value="CANCELLED">Cancelled</option>
+                            </select>
+                            <input type="text" id="pipelineSearch" class="form-control form-control-sm" placeholder="Search order / table..." onkeyup="renderPipelineTable()">
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Order #</th>
+                                    <th>Type</th>
+                                    <th>Table / Guest</th>
+                                    <th>Items</th>
+                                    <th>Total</th>
+                                    <th>Status</th>
+                                    <th>Age</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pipelineTableBody">
+                                <!-- Orders injected by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: MULTITHREADING ENGINE (PRODUCER-CONSUMER) -->
+            <div class="tab-pane fade" id="tab-sim" role="tabpanel">
+                <div class="card border-0 shadow-sm p-4 mb-3">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+                        <div>
+                            <h4 class="fw-bold mb-1"><i class="fas fa-microchip text-warning me-2"></i>Multithreaded Kitchen Producer-Consumer Visualizer</h4>
+                            <p class="text-secondary mb-0">Module 1, 2, 3 synchronization demo: Carousel Rack (Capacity: 5), Inter-Thread wait()/notify() signaling, KitchenOverloadException</p>
+                        </div>
+                        <div class="d-flex gap-2 mt-2 mt-md-0">
+                            <button class="btn btn-primary fw-semibold" id="simStartBtn" onclick="runMultithreadSimulation()">
+                                <i class="fas fa-play me-1"></i> Run 6-Burger Simulation
+                            </button>
+                            <button class="btn btn-outline-danger fw-semibold" onclick="runOverloadSimulation()">
+                                <i class="fas fa-radiation me-1"></i> Trigger Emergency Overload
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Threads and Carousel Diagram -->
+                    <div class="row g-4 mb-4">
+                        <!-- Waiter Producer Thread Box -->
+                        <div class="col-md-3">
+                            <div class="thread-worker-box waiter-worker text-center">
+                                <h6 class="fw-bold"><i class="fas fa-user-tie me-2"></i>OrderTakerThread</h6>
+                                <p class="small mb-1">PRODUCER (Waiter)</p>
+                                <div id="waiterThreadState" class="badge bg-light text-dark fs-6 py-2 px-3">IDLE</div>
+                                <div class="mt-2 small text-light" id="waiterThreadDesc">Waiting to send customer tickets</div>
+                            </div>
+                        </div>
+
+                        <!-- Carousel Queue (Capacity: 5) -->
+                        <div class="col-md-6">
+                            <div class="carousel-rack text-center">
+                                <div class="d-flex justify-content-between text-white small mb-2 px-2">
+                                    <span class="fw-bold"><i class="fas fa-rotate me-1"></i>KitchenOrderQueue Carousel</span>
+                                    <span>Occupancy: <strong id="carouselCount" class="text-warning">0</strong> / 5</span>
+                                </div>
+                                <div class="row g-2" id="carouselSlots">
+                                    <div class="col" id="slot-0"><div class="carousel-slot">Slot 1<br>(Empty)</div></div>
+                                    <div class="col" id="slot-1"><div class="carousel-slot">Slot 2<br>(Empty)</div></div>
+                                    <div class="col" id="slot-2"><div class="carousel-slot">Slot 3<br>(Empty)</div></div>
+                                    <div class="col" id="slot-3"><div class="carousel-slot">Slot 4<br>(Empty)</div></div>
+                                    <div class="col" id="slot-4"><div class="carousel-slot">Slot 5<br>(Empty)</div></div>
+                                </div>
+                                <div class="mt-2 text-muted small" id="carouselStatusText">Carousel is ready for tickets</div>
+                            </div>
+                        </div>
+
+                        <!-- Chef Consumer Thread Box -->
+                        <div class="col-md-3">
+                            <div class="thread-worker-box chef-worker text-center">
+                                <h6 class="fw-bold"><i class="fas fa-user-ninja me-2"></i>ChefStationThread</h6>
+                                <p class="small mb-1">CONSUMER (Chef Mario)</p>
+                                <div id="chefThreadState" class="badge bg-light text-dark fs-6 py-2 px-3">IDLE</div>
+                                <div class="mt-2 small text-light" id="chefThreadDesc">Ready to cook from carousel</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Live Multithreading Console Log -->
+                    <h6 class="fw-bold"><i class="fas fa-terminal me-2"></i>Inter-Thread Signaling & Synchronization Log:</h6>
+                    <div class="sim-console" id="simConsoleLog">
+                        [00:00:00] [System] Producer-Consumer Kitchen Order Carousel Engine loaded. Ready to simulate wait() and notify().
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 5: MENU & STOCK MANAGEMENT -->
+            <div class="tab-pane fade" id="tab-menu" role="tabpanel">
+                <div class="card border-0 shadow-sm p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold mb-0"><i class="fas fa-cubes-stacked text-primary me-2"></i>Menu Items & Stock Inventory</h5>
+                        <button class="btn btn-sm btn-primary" onclick="openAddMenuItemModal()">
+                            <i class="fas fa-plus me-1"></i> Add Menu Item
+                        </button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Dish Name</th>
+                                    <th>Category</th>
+                                    <th>Kitchen Station</th>
+                                    <th>Price</th>
+                                    <th>Stock Level</th>
+                                    <th>Status</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="menuInventoryTableBody">
+                                <!-- Injected by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 6: BILLING & PAYMENT DESK -->
+            <div class="tab-pane fade" id="tab-billing" role="tabpanel">
+                <div class="card border-0 shadow-sm p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <h5 class="fw-bold mb-0"><i class="fas fa-cash-register text-success me-2"></i>Cashier Billing Counter</h5>
+                            <small class="text-secondary">Process payments (Cash, Card, UPI) independent of kitchen cooking state</small>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Order #</th>
+                                    <th>Table</th>
+                                    <th>Customer</th>
+                                    <th>Total Due</th>
+                                    <th>Paid</th>
+                                    <th>Payment Status</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="billingTableBody">
+                                <!-- Injected by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 7: REPORTS & KPIS -->
+            <div class="tab-pane fade" id="tab-dashboard" role="tabpanel">
+                <!-- KPI Stat Cards -->
+                <div class="row g-3 mb-4">
+                    <div class="col-md-3">
+                        <div class="card border-0 shadow-sm bg-primary text-white p-3 rounded-3">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <small class="text-uppercase text-light">Total Revenue</small>
+                                    <h3 class="fw-bold mb-0" id="kpiRevenue">₹0.00</h3>
+                                </div>
+                                <i class="fas fa-wallet fa-2x opacity-50"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card border-0 shadow-sm bg-success text-white p-3 rounded-3">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <small class="text-uppercase text-light">Completed Orders</small>
+                                    <h3 class="fw-bold mb-0" id="kpiCompletedOrders">0</h3>
+                                </div>
+                                <i class="fas fa-check-circle fa-2x opacity-50"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card border-0 shadow-sm bg-warning text-dark p-3 rounded-3">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <small class="text-uppercase text-dark">Active in Kitchen</small>
+                                    <h3 class="fw-bold mb-0" id="kpiActiveOrders">0</h3>
+                                </div>
+                                <i class="fas fa-fire fa-2x opacity-50"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card border-0 shadow-sm bg-info text-white p-3 rounded-3">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <small class="text-uppercase text-light">Avg Prep Time</small>
+                                    <h3 class="fw-bold mb-0" id="kpiAvgPrep">4.5 min</h3>
+                                </div>
+                                <i class="fas fa-stopwatch fa-2x opacity-50"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Row -->
+                <div class="row g-4 mb-4">
+                    <div class="col-lg-6">
+                        <div class="card border-0 shadow-sm p-3">
+                            <h6 class="fw-bold mb-3"><i class="fas fa-chart-pie me-2 text-danger"></i>Orders by Station</h6>
+                            <div style="height: 250px;">
+                                <canvas id="stationChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="card border-0 shadow-sm p-3">
+                            <h6 class="fw-bold mb-3"><i class="fas fa-chart-bar me-2 text-primary"></i>Hourly Revenue Trend</h6>
+                            <div style="height: 250px;">
+                                <canvas id="revenueChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Daily Shift Report Generator -->
+                <div class="card border-0 shadow-sm p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="fw-bold mb-0"><i class="fas fa-file-invoice me-2 text-dark"></i>Daily Shift Performance Summary</h6>
+                        <button class="btn btn-sm btn-success fw-semibold" onclick="exportReportToCsv()">
+                            <i class="fas fa-file-csv me-1"></i> Export Report to CSV
+                        </button>
+                    </div>
+                    <p class="text-muted small">Generated operational report summarizing ticket counts, turnaround times, and billings for current shift.</p>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Payment Modal -->
+    <div class="modal fade" id="paymentModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-cash-register me-2"></i>Settle Order Bill</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <input type="hidden" id="modalPaymentOrderId">
+                    <div class="text-center mb-3">
+                        <span class="text-secondary small">Total Due Amount</span>
+                        <h2 class="fw-bold text-danger mb-0" id="modalPaymentAmount">₹0.00</h2>
+                        <small class="badge bg-light text-dark" id="modalPaymentOrderNum">ORD-001</small>
+                    </div>
+
+                    <label class="form-label small fw-semibold">Select Payment Method</label>
+                    <div class="row g-2 mb-3">
+                        <div class="col-4">
+                            <input type="radio" class="btn-check" name="payMethod" id="payMethodCash" value="CASH" checked>
+                            <label class="btn btn-outline-dark w-100 py-2" for="payMethodCash">
+                                <i class="fas fa-money-bill-wave d-block mb-1"></i> Cash
+                            </label>
+                        </div>
+                        <div class="col-4">
+                            <input type="radio" class="btn-check" name="payMethod" id="payMethodCard" value="CARD">
+                            <label class="btn btn-outline-dark w-100 py-2" for="payMethodCard">
+                                <i class="fas fa-credit-card d-block mb-1"></i> Card
+                            </label>
+                        </div>
+                        <div class="col-4">
+                            <input type="radio" class="btn-check" name="payMethod" id="payMethodUPI" value="UPI">
+                            <label class="btn btn-outline-dark w-100 py-2" for="payMethodUPI">
+                                <i class="fas fa-mobile-screen d-block mb-1"></i> UPI
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold">Transaction Reference / Cash Tendered</label>
+                        <input type="text" id="modalPaymentRef" class="form-control form-control-sm" placeholder="e.g. UPI-REF-9872 or Cash ₹500">
+                    </div>
+
+                    <button class="btn btn-success w-100 fw-bold py-2 shadow-sm" onclick="confirmPayment()">
+                        <i class="fas fa-check-circle me-1"></i> Confirm & Print Receipt
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Receipt Print Modal -->
+    <div class="modal fade" id="receiptModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-body p-4" id="printableReceipt">
+                    <div class="text-center mb-3">
+                        <h5 class="fw-bold mb-0">SPICE & SIZZLE</h5>
+                        <small class="text-muted">Kitchen Automation & KDS</small><br>
+                        <small class="text-muted">GSTIN: 29AAAAA0000A1Z5</small>
+                    </div>
+                    <hr class="my-2">
+                    <div class="d-flex justify-content-between small">
+                        <span id="rcptOrderNum">ORD-001</span>
+                        <span id="rcptTable">Table: T-01</span>
+                    </div>
+                    <div class="small text-muted mb-2" id="rcptDate">Date: 2026-10-30</div>
+                    <hr class="my-2">
+                    <div id="rcptItemsList" class="small mb-2">
+                        <!-- Receipt items injected -->
+                    </div>
+                    <hr class="my-2">
+                    <div class="d-flex justify-content-between small fw-bold">
+                        <span>Total Paid:</span>
+                        <span id="rcptTotal">₹0.00</span>
+                    </div>
+                    <div class="d-flex justify-content-between small text-muted">
+                        <span>Method:</span>
+                        <span id="rcptMethod">CASH</span>
+                    </div>
+                    <div class="text-center mt-3 small text-muted">
+                        Thank you for dining with us!
+                    </div>
+                </div>
+                <div class="modal-footer p-2">
+                    <button class="btn btn-sm btn-dark w-100" onclick="window.print()">
+                        <i class="fas fa-print me-1"></i> Print Receipt
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 Bundle JS CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Embedded Application JavaScript Logic -->
+    <script>
+        // --- Web Audio API Kitchen Chime Synthesizer ---
+        let audioCtx = null;
+        let soundEnabled = true;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        function playKitchenChime(type) {
+            if (!soundEnabled) return;
+            try {
+                initAudio();
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                if (type === 'new-order') {
+                    // Double Ding (High Pitch)
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(880, now); // A5
+                    osc.frequency.setValueAtTime(1174.66, now + 0.15); // D6
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+                    osc.start(now);
+                    osc.stop(now + 0.6);
+                } else if (type === 'ready') {
+                    // Success Triad
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(523.25, now); // C5
+                    osc.frequency.setValueAtTime(659.25, now + 0.1); // E5
+                    osc.frequency.setValueAtTime(783.99, now + 0.2); // G5
+                    gain.gain.setValueAtTime(0.25, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+                    osc.start(now);
+                    osc.stop(now + 0.7);
+                } else if (type === 'overload') {
+                    // Warning Buzzer
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(220, now);
+                    osc.frequency.setValueAtTime(180, now + 0.15);
+                    gain.gain.setValueAtTime(0.4, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+                    osc.start(now);
+                    osc.stop(now + 0.5);
+                }
+            } catch (e) {
+                console.warn("Audio Context notice:", e);
+            }
+        }
+
+        function toggleAudio() {
+            soundEnabled = !soundEnabled;
+            const icon = document.getElementById('soundIcon');
+            if (soundEnabled) {
+                icon.className = 'fas fa-volume-up';
+                playKitchenChime('new-order');
+            } else {
+                icon.className = 'fas fa-volume-mute text-danger';
+            }
+        }
+
+        // --- In-Memory State & Seed Data ---
+        let menuItems = [
+            { id: 1, name: "Classic Cheeseburger", category: "Burgers", station: "GRILL", price: 180, stock: 45, available: true, icon: "fa-burger" },
+            { id: 2, name: "Double Smash Burger", category: "Burgers", station: "GRILL", price: 240, stock: 30, available: true, icon: "fa-burger" },
+            { id: 3, name: "Crispy French Fries", category: "Sides", station: "FRYER", price: 110, stock: 50, available: true, icon: "fa-box" },
+            { id: 4, name: "Peri-Peri Loaded Fries", category: "Sides", station: "FRYER", price: 150, stock: 40, available: true, icon: "fa-fire" },
+            { id: 5, name: "Paneer Tikka Platter", category: "Mains", station: "GRILL", price: 260, stock: 25, available: true, icon: "fa-utensils" },
+            { id: 6, name: "Garlic Butter Naan", category: "Mains", station: "GRILL", price: 60, stock: 80, available: true, icon: "fa-bread-slice" },
+            { id: 7, name: "Iced Cappuccino", category: "Beverages", station: "BEV", price: 130, stock: 60, available: true, icon: "fa-mug-hot" },
+            { id: 8, name: "Fresh Mango Smoothie", category: "Beverages", station: "BEV", price: 160, stock: 35, available: true, icon: "fa-glass-water" },
+            { id: 9, name: "Warm Chocolate Brownie", category: "Desserts", station: "FRYER", price: 140, stock: 20, available: true, icon: "fa-cookie" }
+        ];
+
+        let orders = [
+            {
+                id: 101,
+                orderNumber: "ORD-101",
+                orderType: "DINE_IN",
+                tableNumber: "T-04",
+                customerName: "Rahul Sharma",
+                status: "PLACED",
+                createdAt: new Date(Date.now() - 4 * 60 * 1000),
+                total: 290.00,
+                paid: false,
+                items: [
+                    { name: "Classic Cheeseburger", qty: 1, price: 180, station: "GRILL", notes: "Extra crispy bun" },
+                    { name: "Crispy French Fries", qty: 1, price: 110, station: "FRYER", notes: "" }
+                ]
+            },
+            {
+                id: 102,
+                orderNumber: "ORD-102",
+                orderType: "TAKEAWAY",
+                tableNumber: "TA-02",
+                customerName: "Ananya Sen",
+                status: "PREPARING",
+                createdAt: new Date(Date.now() - 9 * 60 * 1000),
+                total: 390.00,
+                paid: true,
+                items: [
+                    { name: "Double Smash Burger", qty: 1, price: 240, station: "GRILL", notes: "No onions" },
+                    { name: "Peri-Peri Loaded Fries", qty: 1, price: 150, station: "FRYER", notes: "Spicy" }
+                ]
+            },
+            {
+                id: 103,
+                orderNumber: "ORD-103",
+                orderType: "DINE_IN",
+                tableNumber: "T-08",
+                customerName: "Vikram V.",
+                status: "READY",
+                createdAt: new Date(Date.now() - 14 * 60 * 1000),
+                total: 270.00,
+                paid: true,
+                items: [
+                    { name: "Iced Cappuccino", qty: 1, price: 130, station: "BEV", notes: "Low sugar" },
+                    { name: "Warm Chocolate Brownie", qty: 1, price: 140, station: "FRYER", notes: "With hot fudge" }
+                ]
+            }
+        ];
+
+        let cart = [];
+        let activeKdsStationFilter = "ALL";
+
+        // --- KDS Rendering & Bump Bar ---
+        function renderKds() {
+            const container = document.getElementById('kdsCardsContainer');
+            const emptyState = document.getElementById('kdsEmptyState');
+            const badge = document.getElementById('kdsBadge');
+
+            const activeOrders = orders.filter(o => o.status === 'PLACED' || o.status === 'PREPARING' || o.status === 'READY');
+            badge.innerText = activeOrders.length;
+
+            if (activeOrders.length === 0) {
+                emptyState.classList.remove('d-none');
+                container.innerHTML = '';
+                return;
+            } else {
+                emptyState.classList.add('d-none');
+            }
+
+            container.innerHTML = activeOrders.map(order => {
+                const elapsedMin = Math.floor((Date.now() - new Date(order.createdAt).getTime()) / 60000);
+                const elapsedSec = Math.floor(((Date.now() - new Date(order.createdAt).getTime()) % 60000) / 1000);
+                const isOverdue = elapsedMin >= 12;
+
+                const headerClass = order.status.toLowerCase();
+
+                let bumpAction = '';
+                if (order.status === 'PLACED') {
+                    bumpAction = `<button class="btn btn-warning w-100 fw-bold py-2" onclick="transitionOrderStatus(${order.id}, 'PREPARING')"><i class="fas fa-fire me-1"></i> Start Cooking</button>`;
+                } else if (order.status === 'PREPARING') {
+                    bumpAction = `<button class="btn btn-success w-100 fw-bold py-2" onclick="transitionOrderStatus(${order.id}, 'READY')"><i class="fas fa-check-circle me-1"></i> Mark Plated / Ready</button>`;
+                } else if (order.status === 'READY') {
+                    bumpAction = `<button class="btn btn-secondary w-100 fw-bold py-2" onclick="transitionOrderStatus(${order.id}, 'SERVED')"><i class="fas fa-bell-concierge me-1"></i> Serve to Table</button>`;
+                }
+
+                const itemsHtml = order.items.map(it => `
+                    <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                        <div>
+                            <span class="badge bg-dark rounded-pill me-2">${it.qty}x</span>
+                            <span class="fw-bold">${it.name}</span>
+                            ${it.notes ? `<div class="small text-danger fst-italic ms-4">Note: ${it.notes}</div>` : ''}
+                        </div>
+                        <span class="badge badge-station">${it.station}</span>
+                    </li>
+                `).join('');
+
+                return `
+                    <div class="col-md-6 col-lg-4 col-xl-3">
+                        <div class="card kds-ticket">
+                            <div class="kds-header ${headerClass}">
+                                <div>
+                                    <span class="fs-6">${order.orderNumber}</span>
+                                    <span class="badge bg-light text-dark ms-1">${order.tableNumber}</span>
+                                </div>
+                                <div class="kds-timer ${isOverdue ? 'overdue' : ''}">
+                                    ${String(elapsedMin).padStart(2, '0')}:${String(elapsedSec).padStart(2, '0')}
+                                </div>
+                            </div>
+                            <div class="card-body p-3">
+                                <div class="d-flex justify-content-between small text-secondary mb-2">
+                                    <span>${order.customerName || 'Guest'} (${order.orderType})</span>
+                                    <span class="fw-bold text-uppercase">${order.status}</span>
+                                </div>
+                                <ul class="list-group list-group-flush mb-3">
+                                    ${itemsHtml}
+                                </ul>
+                                <div class="d-flex gap-2">
+                                    ${bumpAction}
+                                    <button class="btn btn-outline-danger btn-sm" onclick="cancelOrderPrompt(${order.id})" title="Cancel ticket">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function filterKdsStation(station) {
+            activeKdsStationFilter = station;
+            document.querySelectorAll('#stationFilterGroup button').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+            renderKds();
+        }
+
+        function transitionOrderStatus(orderId, newStatus) {
+            const ord = orders.find(o => o.id === orderId);
+            if (!ord) return;
+            ord.status = newStatus;
+            if (newStatus === 'READY') {
+                playKitchenChime('ready');
+            }
+            renderAllViews();
+        }
+
+        function cancelOrderPrompt(orderId) {
+            if (confirm("Are you sure you want to cancel this kitchen order?")) {
+                const ord = orders.find(o => o.id === orderId);
+                if (ord) {
+                    ord.status = 'CANCELLED';
+                    renderAllViews();
+                }
+            }
+        }
+
+        // --- POS Logic ---
+        function renderPosCatalog() {
+            const grid = document.getElementById('posMenuGrid');
+            grid.innerHTML = menuItems.map(item => `
+                <div class="col-md-6 col-xl-4">
+                    <div class="card pos-item-card p-3 h-100 ${!item.available ? 'opacity-50' : ''}" onclick="addToCart(${item.id})">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <span class="badge bg-light text-dark border">${item.category}</span>
+                            <span class="badge ${item.stock > 10 ? 'bg-success' : 'bg-danger'}">${item.stock} in stock</span>
+                        </div>
+                        <h6 class="fw-bold mb-1"><i class="fas ${item.icon} text-secondary me-2"></i>${item.name}</h6>
+                        <div class="d-flex justify-content-between align-items-center mt-auto pt-2">
+                            <span class="fw-bold text-danger">₹${item.price.toFixed(2)}</span>
+                            <button class="btn btn-sm btn-outline-danger" ${!item.available ? 'disabled' : ''}>
+                                <i class="fas fa-plus"></i> Add
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function addToCart(itemId) {
+            const item = menuItems.find(m => m.id === itemId);
+            if (!item || !item.available || item.stock <= 0) {
+                alert("This item is currently out of stock!");
+                return;
+            }
+            const existing = cart.find(c => c.itemId === itemId);
+            if (existing) {
+                existing.qty++;
+            } else {
+                cart.push({ itemId: item.id, name: item.name, price: item.price, station: item.station, qty: 1, notes: "" });
+            }
+            renderCart();
+        }
+
+        function updateCartQty(idx, delta) {
+            cart[idx].qty += delta;
+            if (cart[idx].qty <= 0) {
+                cart.splice(idx, 1);
+            }
+            renderCart();
+        }
+
+        function renderCart() {
+            const list = document.getElementById('posCartList');
+            const countBadge = document.getElementById('cartCountBadge');
+            const subtotalEl = document.getElementById('posSubtotal');
+            const taxEl = document.getElementById('posTax');
+            const totalEl = document.getElementById('posTotal');
+
+            const totalItems = cart.reduce((sum, c) => sum + c.qty, 0);
+            countBadge.innerText = `${totalItems} items`;
+
+            if (cart.length === 0) {
+                list.innerHTML = `<div class="text-center text-muted py-4 small">Cart is empty. Click items from catalog to add.</div>`;
+                subtotalEl.innerText = "₹0.00";
+                taxEl.innerText = "₹0.00";
+                totalEl.innerText = "₹0.00";
+                return;
+            }
+
+            let subtotal = 0;
+            list.innerHTML = cart.map((c, i) => {
+                const itemTotal = c.qty * c.price;
+                subtotal += itemTotal;
+                return `
+                    <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                        <div>
+                            <div class="fw-bold small">${c.name}</div>
+                            <div class="text-muted" style="font-size:0.75rem;">₹${c.price} x ${c.qty}</div>
+                        </div>
+                        <div class="d-flex align-items-center gap-1">
+                            <button class="btn btn-xs btn-outline-secondary py-0 px-2" onclick="updateCartQty(${i}, -1)">-</button>
+                            <span class="small fw-bold px-1">${c.qty}</span>
+                            <button class="btn btn-xs btn-outline-secondary py-0 px-2" onclick="updateCartQty(${i}, 1)">+</button>
+                            <span class="small fw-bold ms-2">₹${itemTotal}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            const tax = subtotal * 0.05;
+            const grandTotal = subtotal + tax;
+
+            subtotalEl.innerText = `₹${subtotal.toFixed(2)}`;
+            taxEl.innerText = `₹${tax.toFixed(2)}`;
+            totalEl.innerText = `₹${grandTotal.toFixed(2)}`;
+        }
+
+        function submitPosOrder() {
+            if (cart.length === 0) {
+                alert("Please add at least 1 item to the order before dispatching.");
+                return;
+            }
+            const orderType = document.getElementById('posOrderType').value;
+            const tableNum = document.getElementById('posTableNumber').value || "T-01";
+            const custName = document.getElementById('posCustomerName').value || "Guest";
+
+            const subtotal = cart.reduce((s, c) => s + (c.qty * c.price), 0);
+            const total = subtotal * 1.05;
+
+            const newOrder = {
+                id: Date.now(),
+                orderNumber: `ORD-${Math.floor(100 + Math.random() * 900)}`,
+                orderType: orderType,
+                tableNumber: tableNum,
+                customerName: custName,
+                status: 'PLACED',
+                createdAt: new Date(),
+                total: total,
+                paid: false,
+                items: cart.map(c => ({ name: c.name, qty: c.qty, price: c.price, station: c.station, notes: c.notes }))
+            };
+
+            // Deduct stock
+            cart.forEach(c => {
+                const mi = menuItems.find(m => m.id === c.itemId);
+                if (mi) mi.stock -= c.qty;
+            });
+
+            orders.unshift(newOrder);
+            cart = [];
+            renderCart();
+            playKitchenChime('new-order');
+            renderAllViews();
+
+            // Switch to KDS tab
+            document.getElementById('tab-kds-btn').click();
+        }
+
+        // --- Order Pipeline Table ---
+        function renderPipelineTable() {
+            const tbody = document.getElementById('pipelineTableBody');
+            const statusFilter = document.getElementById('pipelineStatusFilter').value;
+            const search = document.getElementById('pipelineSearch').value.toLowerCase();
+
+            const filtered = orders.filter(o => {
+                const matchStatus = statusFilter === 'ALL' || o.status === statusFilter;
+                const matchSearch = o.orderNumber.toLowerCase().includes(search) || o.tableNumber.toLowerCase().includes(search) || (o.customerName && o.customerName.toLowerCase().includes(search));
+                return matchStatus && matchSearch;
+            });
+
+            tbody.innerHTML = filtered.map(o => `
+                <tr>
+                    <td class="fw-bold">${o.orderNumber}</td>
+                    <td><span class="badge bg-light text-dark border">${o.orderType}</span></td>
+                    <td>${o.tableNumber} <small class="text-muted">(${o.customerName || 'Guest'})</small></td>
+                    <td>${o.items.map(i => `${i.qty}x ${i.name}`).join(', ')}</td>
+                    <td class="fw-bold">₹${o.total.toFixed(2)}</td>
+                    <td><span class="badge ${getStatusBadge(o.status)}">${o.status}</span></td>
+                    <td class="small text-muted">${Math.floor((Date.now() - new Date(o.createdAt).getTime()) / 60000)}m ago</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-dark" onclick="openPaymentModal(${o.id})" ${o.paid ? 'disabled' : ''}>
+                            ${o.paid ? '<i class="fas fa-check text-success"></i> Paid' : '<i class="fas fa-receipt"></i> Pay'}
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function getStatusBadge(status) {
+            switch(status) {
+                case 'PLACED': return 'bg-primary';
+                case 'PREPARING': return 'bg-warning text-dark';
+                case 'READY': return 'bg-success';
+                case 'SERVED': return 'bg-secondary';
+                case 'CANCELLED': return 'bg-danger';
+                default: return 'bg-dark';
+            }
+        }
+
+        // --- Multithreading Producer-Consumer Engine Simulation ---
+        let simCarousel = [];
+        const CAROUSEL_CAPACITY = 5;
+
+        function logSim(msg) {
+            const consoleBox = document.getElementById('simConsoleLog');
+            const time = new Date().toTimeString().split(' ')[0];
+            consoleBox.innerHTML += `\n[${time}] ${msg}`;
+            consoleBox.scrollTop = consoleBox.scrollHeight;
+        }
+
+        function updateCarouselSlotsUi() {
+            document.getElementById('carouselCount').innerText = simCarousel.length;
+            for (let i = 0; i < 5; i++) {
+                const slot = document.getElementById(`slot-${i}`);
+                if (i < simCarousel.length) {
+                    slot.innerHTML = `<div class="carousel-slot occupied"><strong>Ticket #${simCarousel[i].id}</strong><br><small>${simCarousel[i].item}</small></div>`;
+                } else {
+                    slot.innerHTML = `<div class="carousel-slot">Slot ${i+1}<br>(Empty)</div>`;
+                }
+            }
+        }
+
+        async function runMultithreadSimulation() {
+            const btn = document.getElementById('simStartBtn');
+            btn.disabled = true;
+            simCarousel = [];
+            updateCarouselSlotsUi();
+
+            logSim("=== STARTING MULTITHREADED PRODUCER-CONSUMER TEST SHIFT ===");
+            logSim("[System] Initialized thread-safe KitchenOrderQueue with capacity = 5.");
+
+            const waiterState = document.getElementById('waiterThreadState');
+            const chefState = document.getElementById('chefThreadState');
+
+            waiterState.innerText = "RUNNING";
+            waiterState.className = "badge bg-warning text-dark fs-6 py-2 px-3";
+
+            chefState.innerText = "WAITING (wait)";
+            chefState.className = "badge bg-secondary text-light fs-6 py-2 px-3";
+
+            const ticketsToProduce = [
+                { id: 1, item: "Classic Cheeseburger" },
+                { id: 2, item: "Double Smash Burger" },
+                { id: 3, item: "Bacon BBQ Burger" },
+                { id: 4, item: "Spicy Crispy Chicken" },
+                { id: 5, item: "Mushroom Swiss Burger" },
+                { id: 6, item: "Truffle Gourmet Burger" }
+            ];
+
+            // Produce first 5 tickets into carousel
+            for (let i = 0; i < 5; i++) {
+                simCarousel.push(ticketsToProduce[i]);
+                updateCarouselSlotsUi();
+                logSim(`[Waiter-Thread] SUCCESS: Placed Ticket #${ticketsToProduce[i].id} (${ticketsToProduce[i].item}) onto rack. Occupancy: ${simCarousel.length}/5.`);
+                await new Promise(r => setTimeout(r, 400));
+            }
+
+            // Ticket 6 hits capacity! Producer pauses on wait()
+            logSim(`[Waiter-Thread] Carousel is FULL (5/5). Waiter Thread pausing on wait()... Waiting for chef space.`);
+            waiterState.innerText = "PAUSED (wait)";
+            waiterState.className = "badge bg-danger text-light fs-6 py-2 px-3";
+            await new Promise(r => setTimeout(r, 1200));
+
+            // Chef wakes up, cooks Ticket #1, calls notify()
+            chefState.innerText = "COOKING";
+            chefState.className = "badge bg-success text-light fs-6 py-2 px-3";
+            const cooked = simCarousel.shift();
+            updateCarouselSlotsUi();
+            playKitchenChime('ready');
+            logSim(`[Chef-Thread] Chef finished cooking Ticket #${cooked.id} (${cooked.item}). Rack space freed up -> calling notify().`);
+            await new Promise(r => setTimeout(r, 600));
+
+            // Waiter resumes and places Ticket #6!
+            waiterState.innerText = "RESUMED";
+            waiterState.className = "badge bg-info text-dark fs-6 py-2 px-3";
+            simCarousel.push(ticketsToProduce[5]);
+            updateCarouselSlotsUi();
+            logSim(`[Waiter-Thread] SUCCESS: Woke up from wait(). Appended Ticket #6 (${ticketsToProduce[5].item}) to rack. Occupancy: 5/5.`);
+            await new Promise(r => setTimeout(r, 600));
+
+            // Chef completes all remaining tickets
+            while (simCarousel.length > 0) {
+                const c = simCarousel.shift();
+                updateCarouselSlotsUi();
+                logSim(`[Chef-Thread] Plated Ticket #${c.id} (${c.item}). Remaining on rack: ${simCarousel.length}/5.`);
+                await new Promise(r => setTimeout(r, 400));
+            }
+
+            waiterState.innerText = "FINISHED";
+            waiterState.className = "badge bg-light text-dark fs-6 py-2 px-3";
+            chefState.innerText = "FINISHED";
+            chefState.className = "badge bg-light text-dark fs-6 py-2 px-3";
+
+            logSim("=== SIMULATION COMPLETED: 6/6 TICKETS COOKED WITH ZERO LOSSES ===");
+            btn.disabled = false;
+        }
+
+        function runOverloadSimulation() {
+            playKitchenChime('overload');
+            logSim("!!! TRIGGERING EMERGENCY BACKLOG OVERLOAD SIMULATION !!!");
+            logSim("[System] Simulating 11 incoming rush tickets exceeding safety capacity limit of 10.");
+            logSim("FATAL: KitchenOverloadException: EMERGENCY OVERLOAD: Kitchen backlog (11 orders) exceeded maximum cooking capacity limit of 10! Rejecting incoming rush tickets.");
+            alert("KitchenOverloadException Caught!\nEmergency backpressure safety threshold triggered. Kitchen backlog exceeded maximum cooking capacity limit of 10.");
+        }
+
+        // --- Menu Inventory Table ---
+        function renderMenuInventory() {
+            const tbody = document.getElementById('menuInventoryTableBody');
+            tbody.innerHTML = menuItems.map(item => `
+                <tr>
+                    <td class="fw-bold"><i class="fas ${item.icon} text-secondary me-2"></i>${item.name}</td>
+                    <td><span class="badge bg-light text-dark border">${item.category}</span></td>
+                    <td><span class="badge badge-station">${item.station}</span></td>
+                    <td class="fw-semibold">₹${item.price.toFixed(2)}</td>
+                    <td>
+                        <div class="input-group input-group-sm" style="width: 120px;">
+                            <input type="number" class="form-control" value="${item.stock}" onchange="updateItemStock(${item.id}, this.value)">
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge ${item.available ? 'bg-success' : 'bg-danger'}">${item.available ? 'Available' : 'Unavailable'}</span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm ${item.available ? 'btn-outline-danger' : 'btn-outline-success'}" onclick="toggleItemAvailable(${item.id})">
+                            ${item.available ? 'Mark Unavailable' : 'Mark Available'}
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function updateItemStock(id, newStock) {
+            const item = menuItems.find(m => m.id === id);
+            if (item) {
+                item.stock = parseInt(newStock) || 0;
+                renderPosCatalog();
+            }
+        }
+
+        function toggleItemAvailable(id) {
+            const item = menuItems.find(m => m.id === id);
+            if (item) {
+                item.available = !item.available;
+                renderAllViews();
+            }
+        }
+
+        // --- Billing Desk Table ---
+        function renderBillingTable() {
+            const tbody = document.getElementById('billingTableBody');
+            tbody.innerHTML = orders.map(o => `
+                <tr>
+                    <td class="fw-bold">${o.orderNumber}</td>
+                    <td>${o.tableNumber}</td>
+                    <td>${o.customerName || 'Guest'}</td>
+                    <td class="fw-bold text-danger">₹${o.total.toFixed(2)}</td>
+                    <td>₹${o.paid ? o.total.toFixed(2) : '0.00'}</td>
+                    <td>
+                        <span class="badge ${o.paid ? 'bg-success' : 'bg-warning text-dark'}">
+                            ${o.paid ? 'PAID' : 'PAYMENT DUE'}
+                        </span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-dark" onclick="openPaymentModal(${o.id})">
+                            ${o.paid ? '<i class="fas fa-print me-1"></i> Receipt' : '<i class="fas fa-credit-card me-1"></i> Collect Payment'}
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function openPaymentModal(orderId) {
+            const order = orders.find(o => o.id === orderId);
+            if (!order) return;
+
+            if (order.paid) {
+                showReceipt(order);
+                return;
+            }
+
+            document.getElementById('modalPaymentOrderId').value = order.id;
+            document.getElementById('modalPaymentOrderNum').innerText = order.orderNumber;
+            document.getElementById('modalPaymentAmount').innerText = `₹${order.total.toFixed(2)}`;
+            new bootstrap.Modal(document.getElementById('paymentModal')).show();
+        }
+
+        function confirmPayment() {
+            const orderId = parseInt(document.getElementById('modalPaymentOrderId').value);
+            const order = orders.find(o => o.id === orderId);
+            if (order) {
+                order.paid = true;
+                const method = document.querySelector('input[name="payMethod"]:checked').value;
+                order.paymentMethod = method;
+
+                bootstrap.Modal.getInstance(document.getElementById('paymentModal')).hide();
+                renderAllViews();
+                showReceipt(order);
+            }
+        }
+
+        function showReceipt(order) {
+            document.getElementById('rcptOrderNum').innerText = order.orderNumber;
+            document.getElementById('rcptTable').innerText = `Table: ${order.tableNumber}`;
+            document.getElementById('rcptDate').innerText = `Date: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
+            document.getElementById('rcptTotal').innerText = `₹${order.total.toFixed(2)}`;
+            document.getElementById('rcptMethod').innerText = order.paymentMethod || 'CASH';
+
+            document.getElementById('rcptItemsList').innerHTML = order.items.map(it => `
+                <div class="d-flex justify-content-between">
+                    <span>${it.qty}x ${it.name}</span>
+                    <span>₹${(it.qty * it.price).toFixed(2)}</span>
+                </div>
+            `).join('');
+
+            new bootstrap.Modal(document.getElementById('receiptModal')).show();
+        }
+
+        // --- Analytics Dashboard Charts ---
+        let stationChartInst = null;
+        let revenueChartInst = null;
+
+        function renderCharts() {
+            const completed = orders.filter(o => o.status === 'SERVED' || o.paid);
+            const totalRev = orders.filter(o => o.paid).reduce((s, o) => s + o.total, 0);
+            const active = orders.filter(o => o.status === 'PLACED' || o.status === 'PREPARING' || o.status === 'READY').length;
+
+            document.getElementById('kpiRevenue').innerText = `₹${totalRev.toFixed(2)}`;
+            document.getElementById('kpiCompletedOrders').innerText = completed.length;
+            document.getElementById('kpiActiveOrders').innerText = active;
+
+            // Chart 1: Station load
+            const ctx1 = document.getElementById('stationChart').getContext('2d');
+            if (stationChartInst) stationChartInst.destroy();
+            stationChartInst = new Chart(ctx1, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Grill Station', 'Fryer Station', 'Beverages', 'Dessert'],
+                    datasets: [{
+                        data: [14, 9, 7, 3],
+                        backgroundColor: ['#e63946', '#f59e0b', '#3b82f6', '#10b981']
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            // Chart 2: Hourly revenue
+            const ctx2 = document.getElementById('revenueChart').getContext('2d');
+            if (revenueChartInst) revenueChartInst.destroy();
+            revenueChartInst = new Chart(ctx2, {
+                type: 'bar',
+                data: {
+                    labels: ['12 PM', '1 PM', '2 PM', '3 PM', '4 PM', '5 PM', '6 PM'],
+                    datasets: [{
+                        label: 'Sales (₹)',
+                        data: [1200, 2800, 3400, 1500, 2100, 3900, 4200],
+                        backgroundColor: '#1d3557'
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        function exportReportToCsv() {
+            let csv = "Order Number,Type,Table,Customer,Total,Status,Paid\n";
+            orders.forEach(o => {
+                csv += `"${o.orderNumber}","${o.orderType}","${o.tableNumber}","${o.customerName || 'Guest'}",${o.total.toFixed(2)},"${o.status}","${o.paid ? 'PAID' : 'DUE'}"\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.setAttribute('href', url);
+            a.setAttribute('download', `Daily_Shift_Report_${new Date().toISOString().slice(0,10)}.csv`);
+            a.click();
+        }
+
+        function clearAllOrdersConfirm() {
+            if (confirm("Reset and clear all demonstration orders to start fresh?")) {
+                orders = [];
+                renderAllViews();
+            }
+        }
+
+        function renderAllViews() {
+            renderKds();
+            renderPosCatalog();
+            renderPipelineTable();
+            renderMenuInventory();
+            renderBillingTable();
+            renderCharts();
+        }
+
+        // Live timer interval for KDS timers
+        setInterval(() => {
+            renderKds();
+        }, 1000);
+
+        // Initial rendering on document load
+        document.addEventListener('DOMContentLoaded', () => {
+            renderAllViews();
+        });
+    </script>
+</body>
+</html>
